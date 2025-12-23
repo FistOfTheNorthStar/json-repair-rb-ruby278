@@ -48,8 +48,8 @@ module JSON
       GRAVE_ACCENT = '`' # 0x0060
       ACUTE_ACCENT = "\u00b4" # 0x00b4
 
-      REGEX_DELIMITER = %r{^[,:\[\]/{}()\n+]+$}
-      REGEX_START_OF_VALUE = /^[\[{\w-]$/
+      REGEX_DELIMITER = %r{^[,:\[\]/{}()\n+]+$}.freeze
+      REGEX_START_OF_VALUE = /^[\[{\w-]$/.freeze
 
       # Functions to check character chars
       def hex?(char)
