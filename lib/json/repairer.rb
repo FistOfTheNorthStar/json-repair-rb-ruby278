@@ -123,7 +123,6 @@ module JSON
 
       initial = true
       while @index < @json.length && @json[@index] != CLOSING_BRACE
-        processed_comma = true
         if initial
           initial = false
         else
