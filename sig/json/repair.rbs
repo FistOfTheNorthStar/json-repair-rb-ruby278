@@ -1,7 +1,10 @@
 module JSON
-  module Repair
-    VERSION: String
+  class JSONRepairError < StandardError
   end
 
-  def self.repair(String) -> ?String
+  module Repair
+    VERSION: ::String
+  end
+
+  def self.repair: (::String json) -> ::String
 end

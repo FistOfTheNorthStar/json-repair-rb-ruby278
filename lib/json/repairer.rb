@@ -25,6 +25,9 @@ module JSON
       't' => "\t"
     }.freeze
 
+    MARKDOWN_OPEN_BLOCKS = ['```', '[```', '{```'].freeze
+    MARKDOWN_CLOSE_BLOCKS = ['```', '```]', '```}'].freeze
+
     def initialize(json)
       @json = json
       @index = 0
@@ -32,9 +35,13 @@ module JSON
     end
 
     def repair
+      parse_markdown_code_block(MARKDOWN_OPEN_BLOCKS)
+
       processed = parse_value
 
       throw_unexpected_end unless processed
+
+      parse_markdown_code_block(MARKDOWN_CLOSE_BLOCKS)
 
       processed_comma = parse_character(COMMA)
       parse_whitespace_and_skip_comments if processed_comma
@@ -71,16 +78,39 @@ module JSON
 
     def parse_value
       parse_whitespace_and_skip_comments
-      process = parse_object || parse_array || parse_string || parse_number || parse_keywords || parse_unquoted_string
+      process = parse_object ||
+                parse_array ||
+                parse_string ||
+                parse_number ||
+                parse_keywords ||
+                parse_unquoted_string(false) ||
+                parse_regex
       parse_whitespace_and_skip_comments
 
       process
     end
 
-    def parse_whitespace
+    def parse_whitespace_and_skip_comments(skip_newline: true)
+      start = @index
+
+      changed = parse_whitespace(skip_newline: skip_newline)
+      loop do
+        changed = parse_comment
+        changed = parse_whitespace(skip_newline: skip_newline) if changed
+        break unless changed
+      end
+
+      @index > start
+    end
+
+    def parse_whitespace(skip_newline: true)
       whitespace = +''
-      while @json[@index] && (whitespace?(@json[@index]) || special_whitespace?(@json[@index]))
-        whitespace << (whitespace?(@json[@index]) ? @json[@index] : ' ')
+      while @json[@index] && (
+        (skip_newline ? whitespace?(@json[@index]) : whitespace_except_newline?(@json[@index])) ||
+        special_whitespace?(@json[@index])
+      )
+        ws = skip_newline ? whitespace?(@json[@index]) : whitespace_except_newline?(@json[@index])
+        whitespace << (ws ? @json[@index] : ' ')
 
         @index += 1
       end
@@ -110,6 +140,36 @@ module JSON
       end
     end
 
+    # Find and skip over a Markdown fenced code block:
+    #     ``` ... ```
+    # or
+    #     ```json ... ```
+    def parse_markdown_code_block(blocks)
+      return false unless skip_markdown_code_block(blocks)
+
+      if function_name_char_start?(@json[@index])
+        # strip the optional language specifier like "json"
+        @index += 1 while @index < @json.length && function_name_char?(@json[@index])
+      end
+
+      parse_whitespace_and_skip_comments
+
+      true
+    end
+
+    def skip_markdown_code_block(blocks)
+      parse_whitespace(skip_newline: true)
+
+      blocks.each do |block|
+        if @json[@index, block.length] == block
+          @index += block.length
+          return true
+        end
+      end
+
+      false
+    end
+
     # Parse an object like '{"key": "value"}'
     def parse_object
       return false unless @json[@index] == OPENING_BRACE
@@ -137,7 +197,7 @@ module JSON
 
         skip_ellipsis
 
-        processed_key = parse_string || parse_unquoted_string
+        processed_key = parse_string || parse_unquoted_string(true)
         unless processed_key
           if @json[@index] == CLOSING_BRACE || @json[@index] == OPENING_BRACE ||
              @json[@index] == CLOSING_BRACKET || @json[@index] == OPENING_BRACKET ||
@@ -217,192 +277,266 @@ module JSON
     # - If it turns out that the string does not have a valid end quote followed
     #   by a delimiter (which should be the case), the function runs again in a
     #   more conservative way, stopping the string at the first next delimiter
-    #   and fixing the string by inserting a quote there.
-    def parse_string(stop_at_delimiter: false)
-      if @json[@index] == BACKSLASH
+    #   and fixing the string by inserting a quote there, or stopping at a
+    #   stop index detected in the first iteration.
+    def parse_string(stop_at_delimiter: false, stop_at_index: -1)
+      skip_escape_chars = @json[@index] == BACKSLASH
+      if skip_escape_chars
         # repair: remove the first escape character
         @index += 1
-        skip_escape_chars = true
       end
 
-      if quote?(@json[@index])
-        # double quotes are correct JSON,
-        # single quotes come from JavaScript for example, we assume it will have a correct single end quote too
-        # otherwise, we will match any double-quote-like start with a double-quote-like end,
-        # or any single-quote-like start with a single-quote-like end
-        is_end_quote = if double_quote?(@json[@index])
-                         method(:double_quote?)
-                       elsif single_quote?(@json[@index])
-                         method(:single_quote?)
-                       elsif single_quote_like?(@json[@index])
-                         method(:single_quote_like?)
-                       else
-                         method(:double_quote_like?)
-                       end
+      return false unless quote?(@json[@index])
 
-        i_before = @index
-        o_before = @output.length
+      # double quotes are correct JSON,
+      # single quotes come from JavaScript for example, we assume it will have a correct single end quote too
+      # otherwise, we will match any double-quote-like start with a double-quote-like end,
+      # or any single-quote-like start with a single-quote-like end
+      is_end_quote = if double_quote?(@json[@index])
+                       method(:double_quote?)
+                     elsif single_quote?(@json[@index])
+                       method(:single_quote?)
+                     elsif single_quote_like?(@json[@index])
+                       method(:single_quote_like?)
+                     else
+                       method(:double_quote_like?)
+                     end
 
-        str = +'"'
-        @index += 1
+      i_before = @index
+      o_before = @output.length
 
-        loop do
-          if @index >= @json.length
-            # end of text, we are missing an end quote
+      str = +'"'
+      @index += 1
 
-            i_prev = prev_non_whitespace_index(@index - 1)
-            if !stop_at_delimiter && delimiter?(@json[i_prev])
-              # if the text ends with a delimiter, like ["hello],
-              # so the missing end quote should be inserted before this delimiter
-              # retry parsing the string, stopping at the first next delimiter
-              @index = i_before
-              @output = @output[0...o_before]
+      loop do
+        if @index >= @json.length
+          # end of text, we are missing an end quote
 
-              return parse_string(stop_at_delimiter: true)
-            end
+          i_prev = prev_non_whitespace_index(@index - 1)
+          if !stop_at_delimiter && delimiter?(@json[i_prev])
+            # if the text ends with a delimiter, like ["hello],
+            # so the missing end quote should be inserted before this delimiter
+            # retry parsing the string, stopping at the first next delimiter
+            @index = i_before
+            @output = @output[0...o_before]
 
-            # repair missing quote
-            str = insert_before_last_whitespace(str, '"')
-            @output << str
+            return parse_string(stop_at_delimiter: true)
+          end
 
-            return true
-          elsif is_end_quote.call(@json[@index])
-            # end quote
-            i_quote = @index
-            o_quote = str.length
-            str << '"'
-            @index += 1
-            @output << str
+          # repair missing quote
+          str = insert_before_last_whitespace(str, '"')
+          @output << str
 
-            parse_whitespace_and_skip_comments
+          return true
+        end
 
-            if stop_at_delimiter ||
-               @index >= @json.length ||
-               delimiter?(@json[@index]) ||
-               quote?(@json[@index]) ||
-               digit?(@json[@index])
-              # The quote is followed by the end of the text, a delimiter, or a next value
-              parse_concatenated_string
+        if @index == stop_at_index
+          # use the stop index detected in the first iteration, and repair end quote
+          str = insert_before_last_whitespace(str, '"')
+          @output << str
 
-              return true
-            end
+          return true
+        end
 
-            if delimiter?(@json[prev_non_whitespace_index(i_quote - 1)])
-              # This is not the right end quote: it is preceded by a delimiter,
-              # and NOT followed by a delimiter. So, there is an end quote missing
-              # parse the string again and then stop at the first next delimiter
-              @index = i_before
-              @output = @output[...o_before]
+        if is_end_quote.call(@json[@index])
+          # end quote
+          # let us check what is before and after the quote to verify whether this is a legit end quote
+          i_quote = @index
+          o_quote = str.length
+          str << '"'
+          @index += 1
+          @output << str
 
-              return parse_string(stop_at_delimiter: true)
-            end
+          parse_whitespace_and_skip_comments(skip_newline: false)
 
-            # revert to right after the quote but before any whitespace, and continue parsing the string
-            @output = @output[...o_before]
-            @index = i_quote + 1
-
-            # repair unescaped quote
-            str = "#{str[...o_quote]}\\#{str[o_quote..]}"
-          elsif stop_at_delimiter && delimiter?(@json[@index])
-            # we're in the mode to stop the string at the first delimiter
-            # because there is an end quote missing
-
-            # repair missing quote
-            str = insert_before_last_whitespace(str, '"')
-            @output << str
-
+          if stop_at_delimiter ||
+             @index >= @json.length ||
+             delimiter?(@json[@index]) ||
+             quote?(@json[@index]) ||
+             digit?(@json[@index])
+            # The quote is followed by the end of the text, a delimiter, or a next value
             parse_concatenated_string
 
             return true
-          elsif @json[@index] == BACKSLASH
-            # handle escaped content like \n or \u2605
-            char = @json[@index + 1]
-            escape_char = ESCAPE_CHARACTERS[char]
-            if escape_char
-              str << @json[@index, 2]
-              @index += 2
-            elsif char == 'u'
-              j = 2
-              j += 1 while j < 6 && @json[@index + j] && hex?(@json[@index + j])
-              if j == 6
-                str << @json[@index, 6]
-                @index += 6
-              elsif @index + j >= @json.length
-                # repair invalid or truncated unicode char at the end of the text
-                # by removing the unicode char and ending the string here
-                @index = @json.length
-              else
-                throw_invalid_unicode_character
-              end
-            else
-              # repair invalid escape character: remove it
-              str << char
-              @index += 2
+          end
+
+          i_prev_char = prev_non_whitespace_index(i_quote - 1)
+          prev_char = @json[i_prev_char]
+
+          if prev_char == ','
+            # A comma followed by a quote, like '{"a":"b,c,"d":"e"}'.
+            # We assume that the quote is a start quote, and that the end quote
+            # should have been located right before the comma but is missing.
+            @index = i_before
+            @output = @output[0...o_before]
+
+            return parse_string(stop_at_delimiter: false, stop_at_index: i_prev_char)
+          end
+
+          if delimiter?(prev_char)
+            # This is not the right end quote: it is preceded by a delimiter,
+            # and NOT followed by a delimiter. So, there is an end quote missing
+            # parse the string again and then stop at the first next delimiter
+            @index = i_before
+            @output = @output[...o_before]
+
+            return parse_string(stop_at_delimiter: true)
+          end
+
+          # revert to right after the quote but before any whitespace, and continue parsing the string
+          @output = @output[...o_before]
+          @index = i_quote + 1
+
+          # repair unescaped quote
+          str = "#{str[...o_quote]}\\#{str[o_quote..]}"
+        elsif stop_at_delimiter && unquoted_string_delimiter?(@json[@index])
+          # we're in the mode to stop the string at the first delimiter
+          # because there is an end quote missing
+
+          # test start of an url like "https://..." (this would be parsed as a comment)
+          if @json[@index - 1] == ':' &&
+             REGEX_URL_START.match?(@json[(i_before + 1)..(@index + 1)] || '')
+            while @index < @json.length && REGEX_URL_CHAR.match?(@json[@index])
+              str << @json[@index]
+              @index += 1
             end
+          end
+
+          # repair missing quote
+          str = insert_before_last_whitespace(str, '"')
+          @output << str
+
+          parse_concatenated_string
+
+          return true
+        elsif @json[@index] == BACKSLASH
+          # handle escaped content like \n or ★
+          char = @json[@index + 1]
+          escape_char = ESCAPE_CHARACTERS[char]
+          if escape_char
+            str << @json[@index, 2]
+            @index += 2
+          elsif char == 'u'
+            j = 2
+            j += 1 while j < 6 && @json[@index + j] && hex?(@json[@index + j])
+            if j == 6
+              str << @json[@index, 6]
+              @index += 6
+            elsif @index + j >= @json.length
+              # repair invalid or truncated unicode char at the end of the text
+              # by removing the unicode char and ending the string here
+              @index = @json.length
+            else
+              throw_invalid_unicode_character
+            end
+          elsif char == "\n"
+            # repair a backslash escaped newline (like in Bash scripts)
+            str << '\n'
+            @index += 2
           else
-            # handle regular characters
-            char = @json[@index]
-
-            if char == DOUBLE_QUOTE && @json[@index - 1] != BACKSLASH
-              # repair unescaped double quote
-              str << "\\#{char}"
-            elsif control_character?(char)
-              # unescaped control character
-              str << CONTROL_CHARACTERS[char]
-            else
-              throw_invalid_character(char) unless valid_string_character?(char)
-              str << char
-            end
-
-            @index += 1
+            # repair invalid escape character: remove it
+            str << char
+            @index += 2
           end
+        else
+          # handle regular characters
+          char = @json[@index]
 
-          if skip_escape_chars
-            # repair: skipped escape character (nothing to do)
-            skip_escape_character
+          if char == DOUBLE_QUOTE && @json[@index - 1] != BACKSLASH
+            # repair unescaped double quote
+            str << "\\#{char}"
+          elsif control_character?(char)
+            # unescaped control character
+            str << CONTROL_CHARACTERS[char]
+          else
+            throw_invalid_character(char) unless valid_string_character?(char)
+            str << char
           end
+          @index += 1
+        end
+
+        if skip_escape_chars
+          # repair: skipped escape character (nothing to do)
+          skip_escape_character
         end
       end
-
-      false
     end
 
     # Repair an unquoted string by adding quotes around it
     # Repair a MongoDB function call like NumberLong("2")
     # Repair a JSONP function call like callback({...});
-    def parse_unquoted_string
+    def parse_unquoted_string(is_key)
+      # NOTE: that the symbol can end with whitespaces: we stop at the next delimiter
+      # also, note that we allow strings to contain a slash / in order to support repairing regular expressions
       start = @index
-      @index += 1 while @index < @json.length && !delimiter_except_slash?(@json[@index]) && !quote?(@json[@index])
-      return if @index <= start
 
-      if @json[@index] == '(' && function_name?(@json[start...@index].strip)
-        # Repair a MongoDB function call like NumberLong("2")
-        # Repair a JSONP function call like callback({...});
-        @index += 1
+      if function_name_char_start?(@json[@index])
+        @index += 1 while @index < @json.length && function_name_char?(@json[@index])
 
-        parse_value
+        j = @index
+        j += 1 while whitespace?(@json[j])
 
-        if @json[@index] == ')'
-          # Repair: skip close bracket of function call
-          @index += 1
-          # Repair: skip semicolon after JSONP call
-          @index += 1 if @json[@index] == ';'
-        end
-      else
-        # Repair unquoted string
-        # Also, repair undefined into null
+        if @json[j] == '('
+          # repair a MongoDB function call like NumberLong("2")
+          # repair a JSONP function call like callback({...});
+          @index = j + 1
 
-        # First, go back to prevent getting trailing whitespaces in the string
-        @index -= 1 while whitespace?(@json[@index - 1]) && @index.positive?
+          parse_value
 
-        symbol = @json[start...@index]
-        @output << (symbol == 'undefined' ? 'null' : symbol.inspect)
+          if @json[@index] == ')'
+            # Repair: skip close bracket of function call
+            @index += 1
+            # Repair: skip semicolon after JSONP call
+            @index += 1 if @json[@index] == ';'
+          end
 
-        if @json[@index] == '"'
-          # We had a missing start quote, but now we encountered the end quote, so we can skip that one
-          @index += 1
+          return true
         end
       end
+
+      while @index < @json.length &&
+            !unquoted_string_delimiter?(@json[@index]) &&
+            !quote?(@json[@index]) &&
+            (!is_key || @json[@index] != ':')
+        @index += 1
+      end
+
+      # test start of an url like "https://..." (this would be parsed as a comment)
+      if @json[@index - 1] == ':' &&
+         REGEX_URL_START.match?(@json[start...(@index + 2)] || '')
+        @index += 1 while @index < @json.length && REGEX_URL_CHAR.match?(@json[@index])
+      end
+
+      return false if @index <= start
+
+      # Repair unquoted string
+      # Also, repair undefined into null
+
+      # First, go back to prevent getting trailing whitespaces in the string
+      @index -= 1 while @index.positive? && whitespace?(@json[@index - 1])
+
+      symbol = @json[start...@index]
+      @output << (symbol == 'undefined' ? 'null' : symbol.inspect)
+
+      if @json[@index] == '"'
+        # We had a missing start quote, but now we encountered the end quote, so we can skip that one
+        @index += 1
+      end
+
+      true
+    end
+
+    # Parse a regular expression literal like /foo/ or /foo\/bar/
+    def parse_regex
+      return false unless @json[@index] == '/'
+
+      start = @index
+      @index += 1
+
+      @index += 1 while @index < @json.length && (@json[@index] != '/' || @json[@index - 1] == BACKSLASH)
+      @index += 1
+
+      @output << @json[start...@index].inspect
 
       true
     end
@@ -415,19 +549,6 @@ module JSON
       else
         false
       end
-    end
-
-    def parse_whitespace_and_skip_comments
-      start = @index
-
-      changed = parse_whitespace
-      loop do
-        changed = parse_comment
-        changed = parse_whitespace if changed
-        break unless changed
-      end
-
-      @index > start
     end
 
     # Parse a number like 2.4 or 2.4e6

@@ -35,21 +35,28 @@ module JSON
       LOWERCASE_E = 'e' # 0x65
       UPPERCASE_F = 'F' # 0x46
       LOWERCASE_F = 'f' # 0x66
-      NON_BREAKING_SPACE = "\u00a0" # 0xa0
-      EN_QUAD = "\u2000" # 0x2000
-      HAIR_SPACE = "\u200a" # 0x200a
-      NARROW_NO_BREAK_SPACE = "\u202f" # 0x202f
-      MEDIUM_MATHEMATICAL_SPACE = "\u205f" # 0x205f
-      IDEOGRAPHIC_SPACE = "\u3000" # 0x3000
-      DOUBLE_QUOTE_LEFT = "\u201c" # 0x201c
-      DOUBLE_QUOTE_RIGHT = "\u201d" # 0x201d
-      QUOTE_LEFT = "\u2018" # 0x2018
-      QUOTE_RIGHT = "\u2019" # 0x2019
+      NON_BREAKING_SPACE = ' ' # 0xa0
+      MONGOLIAN_VOWEL_SEPARATOR = '᠎' # 0x180e
+      EN_QUAD = ' ' # 0x2000
+      ZERO_WIDTH_SPACE = '​' # 0x200b
+      NARROW_NO_BREAK_SPACE = ' ' # 0x202f
+      MEDIUM_MATHEMATICAL_SPACE = ' ' # 0x205f
+      IDEOGRAPHIC_SPACE = '　' # 0x3000
+      ZERO_WIDTH_NO_BREAK_SPACE = '﻿' # 0xfeff
+      DOUBLE_QUOTE_LEFT = '“' # 0x201c
+      DOUBLE_QUOTE_RIGHT = '”' # 0x201d
+      QUOTE_LEFT = '‘' # 0x2018
+      QUOTE_RIGHT = '’' # 0x2019
       GRAVE_ACCENT = '`' # 0x0060
-      ACUTE_ACCENT = "\u00b4" # 0x00b4
+      ACUTE_ACCENT = '´' # 0x00b4
 
       REGEX_DELIMITER = %r{^[,:\[\]/{}()\n+]+$}
+      REGEX_UNQUOTED_STRING_DELIMITER = %r{^[,\[\]/{}\n+]+$}
       REGEX_START_OF_VALUE = /^[\[{\w-]$/
+      # matches "https://" and other schemas
+      REGEX_URL_START = %r{^(http|https|ftp|mailto|file|data|irc)://$}
+      # matches all valid URL characters EXCEPT "[", "]", and "," (important JSON delimiters)
+      REGEX_URL_CHAR = %r{^[A-Za-z0-9\-._~:/?#@!$&'()*+;=]$}
 
       # Functions to check character chars
       def hex?(char)
@@ -70,8 +77,19 @@ module JSON
         REGEX_DELIMITER.match?(char)
       end
 
-      def delimiter_except_slash?(char)
-        delimiter?(char) && char != SLASH
+      def unquoted_string_delimiter?(char)
+        REGEX_UNQUOTED_STRING_DELIMITER.match?(char)
+      end
+
+      REGEX_FUNCTION_NAME_CHAR_START = /\A[a-zA-Z_$]\z/
+      REGEX_FUNCTION_NAME_CHAR = /\A[a-zA-Z0-9_$]\z/
+
+      def function_name_char_start?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR_START.match?(char)
+      end
+
+      def function_name_char?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR.match?(char)
       end
 
       def start_of_value?(char)
@@ -86,11 +104,22 @@ module JSON
         [SPACE, NEWLINE, TAB, RETURN].include?(char)
       end
 
+      def whitespace_except_newline?(char)
+        [SPACE, TAB, RETURN].include?(char)
+      end
+
       def special_whitespace?(char)
+        return false unless char
+
         [
-          NON_BREAKING_SPACE, NARROW_NO_BREAK_SPACE, MEDIUM_MATHEMATICAL_SPACE, IDEOGRAPHIC_SPACE
+          NON_BREAKING_SPACE,
+          MONGOLIAN_VOWEL_SEPARATOR,
+          NARROW_NO_BREAK_SPACE,
+          MEDIUM_MATHEMATICAL_SPACE,
+          IDEOGRAPHIC_SPACE,
+          ZERO_WIDTH_NO_BREAK_SPACE
         ].include?(char) ||
-          (char >= EN_QUAD && char <= HAIR_SPACE)
+          (char >= EN_QUAD && char <= ZERO_WIDTH_SPACE)
       end
 
       def quote?(char)
@@ -159,10 +188,6 @@ module JSON
 
       def remove_at_index(text, start, count)
         text[0...start] + text[start + count..]
-      end
-
-      def function_name?(text)
-        /^\w+$/.match?(text)
       end
 
       def ends_with_comma_or_newline?(text)
