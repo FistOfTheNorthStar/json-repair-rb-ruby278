@@ -85,11 +85,11 @@ module JSON
       REGEX_FUNCTION_NAME_CHAR = /\A[a-zA-Z0-9_$]\z/
 
       def function_name_char_start?(char)
-        REGEX_FUNCTION_NAME_CHAR_START.match?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR_START.match?(char)
       end
 
       def function_name_char?(char)
-        REGEX_FUNCTION_NAME_CHAR.match?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR.match?(char)
       end
 
       def start_of_value?(char)

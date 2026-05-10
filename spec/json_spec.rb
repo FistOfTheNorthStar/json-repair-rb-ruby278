@@ -728,7 +728,7 @@ RSpec.describe JSON do
       end
 
       specify do
-        expect { JSON.repair("\"abc \"") }.to \
+        expect { JSON.repair("\"abc\u0000\"") }.to \
           raise_error(JSON::JSONRepairError, /\AInvalid character "\\u0000" at index 4\z/i)
       end
 
