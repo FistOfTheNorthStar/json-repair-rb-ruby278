@@ -1,0 +1,165 @@
+module JSON
+  module Repair
+    module StringUtils
+      @output: untyped
+
+      @index: untyped
+
+      # Constants for character chars
+      BACKSLASH: "\\"
+
+      SLASH: "/"
+
+      ASTERISK: "*"
+
+      OPENING_BRACE: "{"
+
+      CLOSING_BRACE: "}"
+
+      OPENING_BRACKET: "["
+
+      CLOSING_BRACKET: "]"
+
+      OPEN_PARENTHESIS: "("
+
+      CLOSE_PARENTHESIS: ")"
+
+      SPACE: " "
+
+      NEWLINE: "\n"
+
+      TAB: "\t"
+
+      RETURN: "\r"
+
+      BACKSPACE: "\b"
+
+      FORM_FEED: "\f"
+
+      DOUBLE_QUOTE: "\""
+
+      PLUS: "+"
+
+      MINUS: "-"
+
+      QUOTE: "'"
+
+      ZERO: "0"
+
+      NINE: "9"
+
+      COMMA: ","
+
+      DOT: "."
+
+      COLON: ":"
+
+      SEMICOLON: ";"
+
+      UPPERCASE_A: "A"
+
+      LOWERCASE_A: "a"
+
+      UPPERCASE_E: "E"
+
+      LOWERCASE_E: "e"
+
+      UPPERCASE_F: "F"
+
+      LOWERCASE_F: "f"
+
+      NON_BREAKING_SPACE: ::String
+
+      MONGOLIAN_VOWEL_SEPARATOR: ::String
+
+      EN_QUAD: ::String
+
+      ZERO_WIDTH_SPACE: ::String
+
+      NARROW_NO_BREAK_SPACE: ::String
+
+      MEDIUM_MATHEMATICAL_SPACE: ::String
+
+      IDEOGRAPHIC_SPACE: ::String
+
+      ZERO_WIDTH_NO_BREAK_SPACE: ::String
+
+      DOUBLE_QUOTE_LEFT: ::String
+
+      DOUBLE_QUOTE_RIGHT: ::String
+
+      QUOTE_LEFT: ::String
+
+      QUOTE_RIGHT: ::String
+
+      GRAVE_ACCENT: "`"
+
+      ACUTE_ACCENT: ::String
+
+      REGEX_DELIMITER: ::Regexp
+
+      REGEX_UNQUOTED_STRING_DELIMITER: ::Regexp
+
+      REGEX_START_OF_VALUE: ::Regexp
+
+      REGEX_URL_START: ::Regexp
+
+      REGEX_URL_CHAR: ::Regexp
+
+      REGEX_FUNCTION_NAME_CHAR_START: ::Regexp
+
+      REGEX_FUNCTION_NAME_CHAR: ::Regexp
+
+      # Functions to check character chars
+      def hex?: (untyped char) -> untyped
+
+      def digit?: (untyped char) -> untyped
+
+      def valid_string_character?: (untyped char) -> untyped
+
+      def delimiter?: (untyped char) -> untyped
+
+      def unquoted_string_delimiter?: (untyped char) -> untyped
+
+      def function_name_char_start?: (untyped char) -> untyped
+
+      def function_name_char?: (untyped char) -> untyped
+
+      def start_of_value?: (untyped char) -> untyped
+
+      def control_character?: (untyped char) -> untyped
+
+      def whitespace?: (untyped char) -> untyped
+
+      def whitespace_except_newline?: (untyped char) -> untyped
+
+      def special_whitespace?: (untyped char) -> untyped
+
+      def quote?: (untyped char) -> untyped
+
+      def double_quote?: (untyped char) -> untyped
+
+      def single_quote?: (untyped char) -> untyped
+
+      def double_quote_like?: (untyped char) -> untyped
+
+      def single_quote_like?: (untyped char) -> untyped
+
+      # Strip last occurrence of text_to_strip from text
+      def strip_last_occurrence: (untyped text, untyped text_to_strip, ?strip_remaining_text: bool) -> untyped
+
+      def insert_before_last_whitespace: (untyped text, untyped text_to_insert) -> untyped
+
+      # Parse keywords true, false, null
+      # Repair Python keywords True, False, None
+      # Repair Ruby keyword nil
+      def parse_keywords: () -> untyped
+
+      def parse_keyword: (untyped name, untyped value) -> (true | false)
+
+      def remove_at_index: (untyped text, untyped start, untyped count) -> untyped
+
+      def ends_with_comma_or_newline?: (untyped text) -> untyped
+    end
+  end
+end

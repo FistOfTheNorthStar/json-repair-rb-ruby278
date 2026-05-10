@@ -118,11 +118,47 @@ RSpec.describe JSON do
       it 'adds missing end quote' do
         expect(JSON.repair('"abc')).to eq('"abc"')
         expect(JSON.repair("'abc")).to eq('"abc"')
+
+        expect(JSON.repair('"12:20')).to eq('"12:20"')
+        expect(JSON.repair('{"time":"12:20}')).to eq('{"time":"12:20"}')
+        expect(JSON.repair('{"date":2024-10-18T18:35:22.229Z}')).to \
+          eq('{"date":"2024-10-18T18:35:22.229Z"}')
+        expect(JSON.repair('"She said:')).to eq('"She said:"')
+        expect(JSON.repair('{"text": "She said:')).to eq('{"text": "She said:"}')
+        expect(JSON.repair('["hello, world]')).to eq('["hello", "world"]')
+        expect(JSON.repair('["hello,"world"]')).to eq('["hello","world"]')
+
+        expect(JSON.repair('{"a":"b}')).to eq('{"a":"b"}')
+        expect(JSON.repair('{"a":"b,"c":"d"}')).to eq('{"a":"b","c":"d"}')
+        expect(JSON.repair('{"a":"b,c,"d":"e"}')).to eq('{"a":"b,c","d":"e"}')
+        expect(JSON.repair('{a:"b,c,"d":"e"}')).to eq('{"a":"b,c","d":"e"}')
+        expect(JSON.repair('["b,c,]')).to eq('["b","c"]')
+
         expect(JSON.repair("\u2018abc")).to eq('"abc"')
         expect(JSON.repair('"it\'s working')).to eq('"it\'s working"')
         expect(JSON.repair('["abc+/*comment*/"def"]')).to eq('["abcdef"]')
         expect(JSON.repair('["abc/*comment*/+"def"]')).to eq('["abcdef"]')
         expect(JSON.repair('["abc,/*comment*/"def"]')).to eq('["abc","def"]')
+      end
+
+      it 'repairs an unquoted url' do
+        expect(JSON.repair('https://www.bible.com/')).to eq('"https://www.bible.com/"')
+        expect(JSON.repair('{url:https://www.bible.com/}')).to \
+          eq('{"url":"https://www.bible.com/"}')
+        expect(JSON.repair('{url:https://www.bible.com/,"id":2}')).to \
+          eq('{"url":"https://www.bible.com/","id":2}')
+        expect(JSON.repair('[https://www.bible.com/]')).to eq('["https://www.bible.com/"]')
+        expect(JSON.repair('[https://www.bible.com/,2]')).to eq('["https://www.bible.com/",2]')
+      end
+
+      it 'repairs a url with missing end quote' do
+        expect(JSON.repair('"https://www.bible.com/')).to eq('"https://www.bible.com/"')
+        expect(JSON.repair('{"url":"https://www.bible.com/}')).to \
+          eq('{"url":"https://www.bible.com/"}')
+        expect(JSON.repair('{"url":"https://www.bible.com/,"id":2}')).to \
+          eq('{"url":"https://www.bible.com/","id":2}')
+        expect(JSON.repair('["https://www.bible.com/]')).to eq('["https://www.bible.com/"]')
+        expect(JSON.repair('["https://www.bible.com/,2]')).to eq('["https://www.bible.com/",2]')
       end
 
       it 'repairs truncated JSON' do
@@ -232,6 +268,10 @@ RSpec.describe JSON do
         expect(JSON.repair('"\\a"')).to eq('"a"')
       end
 
+      it 'replaces backslash-escaped newline characters' do
+        expect(JSON.repair("\"first\\\nsecond\"")).to eq('"first\\nsecond"')
+      end
+
       it 'repairs a missing object value' do
         expect(JSON.repair('{"a":}')).to eq('{"a":null}')
         expect(JSON.repair('{"a":,"b":2}')).to eq('{"a":null,"b":2}')
@@ -271,6 +311,11 @@ RSpec.describe JSON do
         expect(JSON.repair("{\"a\":\u202F\"foo\"}")).to eq('{"a": "foo"}')
         expect(JSON.repair("{\"a\":\u205F\"foo\"}")).to eq('{"a": "foo"}')
         expect(JSON.repair("{\"a\":\u3000\"foo\"}")).to eq('{"a": "foo"}')
+        expect(JSON.repair("{\"a\":\u180e\"foo\"}")).to eq('{"a": "foo"}')
+        expect(JSON.repair("{\"a\":\u2000\"foo\"}")).to eq('{"a": "foo"}')
+        expect(JSON.repair("{\"a\":\u2002\"foo\"}")).to eq('{"a": "foo"}')
+        expect(JSON.repair("{\"a\":\u200b\"foo\"}")).to eq('{"a": "foo"}')
+        expect(JSON.repair("{\"a\":\ufeff\"foo\"}")).to eq('{"a": "foo"}')
       end
 
       it 'replaces non normalized left/right quotes' do
@@ -325,6 +370,24 @@ RSpec.describe JSON do
 
         expect { JSON.repair('callback {}') }.to \
           raise_error(JSON::JSONRepairError, 'Unexpected character "{" at index 9')
+      end
+
+      it 'strips markdown fenced code blocks' do
+        expect(JSON.repair("```\n{\"a\":\"b\"}\n```")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("```json\n{\"a\":\"b\"}\n```")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("```\n{\"a\":\"b\"}\n")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("\n{\"a\":\"b\"}\n```")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair('```{"a":"b"}```')).to eq('{"a":"b"}')
+        expect(JSON.repair("```\n[1,2,3]\n```")).to eq("\n[1,2,3]\n")
+        expect(JSON.repair("```python\n{\"a\":\"b\"}\n```")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("\n ```json\n{\"a\":\"b\"}\n```\n  ")).to eq("\n \n{\"a\":\"b\"}\n\n  ")
+      end
+
+      it 'strips invalid markdown fenced code blocks' do
+        expect(JSON.repair("[```\n{\"a\":\"b\"}\n```]")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("[```json\n{\"a\":\"b\"}\n```]")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("{```\n{\"a\":\"b\"}\n```}")).to eq("\n{\"a\":\"b\"}\n")
+        expect(JSON.repair("{```json\n{\"a\":\"b\"}\n```}")).to eq("\n{\"a\":\"b\"}\n")
       end
 
       it 'repairs escaped string contents' do
@@ -448,17 +511,13 @@ RSpec.describe JSON do
         expect(JSON.repair(mongo_document)).to eq(expected_json)
       end
 
-      it 'does not match MongoDB-like functions in an unquoted string' do
-        expect { JSON.repair('["This is C(2)", "This is F(3)]') }.to \
-          raise_error(JSON::JSONRepairError, 'Unexpected character "(" at index 27')
-        expect { JSON.repair('["This is C(2)", This is F(3)]') }.to \
-          raise_error(JSON::JSONRepairError, 'Unexpected character "(" at index 26')
-
-        # TODO: ideally, we should be able to repair an unquoted string containing ( and )
-        # expect(JSON.repair('["This is C(2)", "This is F(3)]')).to \
-        #   eq('["This is C(2)", "This is F(3)"]')
-        # expect(JSON.repair('["This is C(2)", This is F(3)]')).to \
-        #   eq('["This is C(2)", "This is F(3)"]')
+      it 'parses an unquoted string' do
+        expect(JSON.repair('hello world')).to eq('"hello world"')
+        expect(JSON.repair('She said: no way')).to eq('"She said: no way"')
+        expect(JSON.repair('["This is C(2)", "This is F(3)]')).to \
+          eq('["This is C(2)", "This is F(3)"]')
+        expect(JSON.repair('["This is C(2)", This is F(3)]')).to \
+          eq('["This is C(2)", "This is F(3)"]')
       end
 
       it 'replaces Python constants None, True, False' do
@@ -498,6 +557,22 @@ RSpec.describe JSON do
       it 'repairs regular expressions' do
         expect(JSON.repair('{regex: /standalone-styles.css/}')).to \
           eq('{"regex": "/standalone-styles.css/"}')
+        expect(JSON.repair('/[a-z]_/')).to eq('"/[a-z]_/"')
+
+        # with escape char
+        repaired_regex = JSON.repair('/\\//')
+        expect(repaired_regex).to eq('"/\\\\//"')
+      end
+
+      it 'escapes quotes in repaired regular expressions' do
+        # Prevent a string like:
+        #     '/foo"; console.log(-1); "/'
+        # from being parsed into:
+        #     '"/foo"; console.log(-1); "/"'
+        # which would be executed as JavaScript when this JSON is being parsed with `eval`.
+        # See https://github.com/josdejong/jsonrepair/issues/150
+        expect(JSON.repair('/foo"; console.log(-1); "/')).to \
+          eq('"/foo\\"; console.log(-1); \\"/"')
       end
 
       it 'concatenates strings' do
@@ -524,6 +599,14 @@ RSpec.describe JSON do
       it 'repairs missing comma between object properties' do
         expect(JSON.repair("{\"a\":2\n\"b\":3\n}")).to eq("{\"a\":2,\n\"b\":3\n}")
         expect(JSON.repair("{\"a\":2\n\"b\":3\nc:4}")).to eq("{\"a\":2,\n\"b\":3,\n\"c\":4}")
+        expect(JSON.repair("{\n  \"firstName\": \"John\"\n  lastName: Smith")).to \
+          eq("{\n  \"firstName\": \"John\",\n  \"lastName\": \"Smith\"}")
+        expect(JSON.repair("{\n  \"firstName\": \"John\" /* comment */ \n  lastName: Smith")).to \
+          eq("{\n  \"firstName\": \"John\",  \n  \"lastName\": \"Smith\"}")
+
+        # verify parsing a comma after a return (since in parse_string we stop at a return)
+        expect(JSON.repair("{\n  \"firstName\": \"John\"\n  ,  lastName: Smith")).to \
+          eq("{\n  \"firstName\": \"John\"\n  ,  \"lastName\": \"Smith\"}")
       end
 
       it 'repairs numbers at the end' do
@@ -642,6 +725,16 @@ RSpec.describe JSON do
       specify do
         expect { JSON.repair('"\uZ000"') }.to \
           raise_error(JSON::JSONRepairError, 'Invalid unicode character "\\\\uZ000" at index 1')
+      end
+
+      specify do
+        expect { JSON.repair("\"abc \"") }.to \
+          raise_error(JSON::JSONRepairError, /\AInvalid character "\\u0000" at index 4\z/i)
+      end
+
+      specify do
+        expect { JSON.repair("\"abc\u001F\"") }.to \
+          raise_error(JSON::JSONRepairError, /\AInvalid character "\\u001f" at index 4\z/i)
       end
     end
   end

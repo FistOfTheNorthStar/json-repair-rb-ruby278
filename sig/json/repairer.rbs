@@ -1,0 +1,103 @@
+module JSON
+  class Repairer
+    @json: ::String
+
+    @index: Integer
+
+    @output: ::String
+
+    include Repair::StringUtils
+
+    CONTROL_CHARACTERS: ::Hash[::String, "\\b" | "\\f" | "\\n" | "\\r" | "\\t"]
+
+    ESCAPE_CHARACTERS: ::Hash[::String, "\"" | "\\" | "/" | "\b" | "\f" | "\n" | "\r" | "\t"]
+
+    MARKDOWN_OPEN_BLOCKS: ::Array[::String]
+
+    MARKDOWN_CLOSE_BLOCKS: ::Array[::String]
+
+    def initialize: (::String json) -> void
+
+    def repair: () -> ::String
+
+    private
+
+    def parse_value: () -> untyped
+
+    def parse_whitespace: (?skip_newline: bool) -> (true | false)
+
+    def parse_comment: () -> (true | false)
+
+    # Find and skip over a Markdown fenced code block
+    def parse_markdown_code_block: (::Array[::String] blocks) -> (true | false)
+
+    def skip_markdown_code_block: (::Array[::String] blocks) -> (true | false)
+
+    # Parse an object like '{"key": "value"}'
+    def parse_object: () -> (false | true)
+
+    def skip_character: (untyped char) -> (true | false)
+
+    # Skip ellipsis like "[1,2,3,...]" or "[1,2,3,...,9]" or "[...,7,8,9]"
+    # or a similar construct in objects.
+    def skip_ellipsis: () -> untyped
+
+    # Parse a string enclosed by double quotes "...". Can contain escaped quotes
+    # Repair strings enclosed in single quotes or special quotes
+    # Repair an escaped string
+    #
+    # The function can run in two stages:
+    # - First, it assumes the string has a valid end quote
+    # - If it turns out that the string does not have a valid end quote followed
+    #   by a delimiter (which should be the case), the function runs again in a
+    #   more conservative way, stopping the string at the first next delimiter
+    #   and fixing the string by inserting a quote there, or stopping at a
+    #   stop index detected in the first iteration.
+    def parse_string: (?stop_at_delimiter: bool, ?stop_at_index: ::Integer) -> (untyped | true | false)
+
+    # Repair an unquoted string by adding quotes around it
+    # Repair a MongoDB function call like NumberLong("2")
+    # Repair a JSONP function call like callback({...});
+    def parse_unquoted_string: (bool is_key) -> (false | true)
+
+    # Parse a regular expression literal like /foo/ or /foo\/bar/
+    def parse_regex: () -> (false | true)
+
+    def parse_character: (untyped char) -> (true | false)
+
+    def parse_whitespace_and_skip_comments: (?skip_newline: bool) -> untyped
+
+    # Parse a number like 2.4 or 2.4e6
+    def parse_number: () -> (true | false)
+
+    def at_end_of_number?: () -> untyped
+
+    # Parse an array like '["item1", "item2", ...]'
+    def parse_array: () -> (true | false)
+
+    def prev_non_whitespace_index: (untyped start) -> untyped
+
+    # Repair concatenated strings like "hello" + "world", change this into "helloworld"
+    def parse_concatenated_string: () -> untyped
+
+    def repair_number_ending_with_numeric_symbol: (untyped start) -> untyped
+
+    # Parse and repair Newline Delimited JSON (NDJSON):
+    # multiple JSON objects separated by a newline character
+    def parse_newline_delimited_json: () -> untyped
+
+    def skip_escape_character: () -> untyped
+
+    def throw_invalid_character: (untyped char) -> untyped
+
+    def throw_unexpected_character: () -> untyped
+
+    def throw_unexpected_end: () -> untyped
+
+    def throw_object_key_expected: () -> untyped
+
+    def throw_colon_expected: () -> untyped
+
+    def throw_invalid_unicode_character: () -> untyped
+  end
+end
