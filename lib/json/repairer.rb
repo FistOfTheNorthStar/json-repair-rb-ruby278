@@ -28,7 +28,7 @@ module JSON
     def initialize(json)
       @json = json
       @index = 0
-      @output = ''
+      @output = +''
     end
 
     def repair
@@ -78,15 +78,15 @@ module JSON
     end
 
     def parse_whitespace
-      whitespace = ''
+      whitespace = +''
       while @json[@index] && (whitespace?(@json[@index]) || special_whitespace?(@json[@index]))
-        whitespace += whitespace?(@json[@index]) ? @json[@index] : ' '
+        whitespace << (whitespace?(@json[@index]) ? @json[@index] : ' ')
 
         @index += 1
       end
 
       unless whitespace.empty?
-        @output += whitespace
+        @output << whitespace
         return true
       end
 
@@ -114,7 +114,7 @@ module JSON
     def parse_object
       return false unless @json[@index] == OPENING_BRACE
 
-      @output += '{'
+      @output << '{'
       @index += 1
       parse_whitespace_and_skip_comments
 
@@ -166,7 +166,7 @@ module JSON
         unless processed_value
           if processed_colon || truncated_text
             # repair missing object value
-            @output += 'null'
+            @output << 'null'
           else
             throw_colon_expected
           end
@@ -174,7 +174,7 @@ module JSON
       end
 
       if @json[@index] == CLOSING_BRACE
-        @output += '}'
+        @output << '}'
         @index += 1
       else
         # repair missing end bracket
@@ -243,7 +243,7 @@ module JSON
         i_before = @index
         o_before = @output.length
 
-        str = '"'
+        str = +'"'
         @index += 1
 
         loop do
@@ -263,16 +263,16 @@ module JSON
 
             # repair missing quote
             str = insert_before_last_whitespace(str, '"')
-            @output += str
+            @output << str
 
             return true
           elsif is_end_quote.call(@json[@index])
             # end quote
             i_quote = @index
             o_quote = str.length
-            str += '"'
+            str << '"'
             @index += 1
-            @output += str
+            @output << str
 
             parse_whitespace_and_skip_comments
 
@@ -309,7 +309,7 @@ module JSON
 
             # repair missing quote
             str = insert_before_last_whitespace(str, '"')
-            @output += str
+            @output << str
 
             parse_concatenated_string
 
@@ -319,13 +319,13 @@ module JSON
             char = @json[@index + 1]
             escape_char = ESCAPE_CHARACTERS[char]
             if escape_char
-              str += @json[@index, 2]
+              str << @json[@index, 2]
               @index += 2
             elsif char == 'u'
               j = 2
               j += 1 while j < 6 && @json[@index + j] && hex?(@json[@index + j])
               if j == 6
-                str += @json[@index, 6]
+                str << @json[@index, 6]
                 @index += 6
               elsif @index + j >= @json.length
                 # repair invalid or truncated unicode char at the end of the text
@@ -336,7 +336,7 @@ module JSON
               end
             else
               # repair invalid escape character: remove it
-              str += char
+              str << char
               @index += 2
             end
           else
@@ -345,13 +345,13 @@ module JSON
 
             if char == DOUBLE_QUOTE && @json[@index - 1] != BACKSLASH
               # repair unescaped double quote
-              str += "\\#{char}"
+              str << "\\#{char}"
             elsif control_character?(char)
               # unescaped control character
-              str += CONTROL_CHARACTERS[char]
+              str << CONTROL_CHARACTERS[char]
             else
               throw_invalid_character(char) unless valid_string_character?(char)
-              str += char
+              str << char
             end
 
             @index += 1
@@ -396,7 +396,7 @@ module JSON
         @index -= 1 while whitespace?(@json[@index - 1]) && @index.positive?
 
         symbol = @json[start...@index]
-        @output += symbol == 'undefined' ? 'null' : symbol.inspect
+        @output << (symbol == 'undefined' ? 'null' : symbol.inspect)
 
         if @json[@index] == '"'
           # We had a missing start quote, but now we encountered the end quote, so we can skip that one
@@ -409,7 +409,7 @@ module JSON
 
     def parse_character(char)
       if @json[@index] == char
-        @output += @json[@index]
+        @output << @json[@index]
         @index += 1
         true
       else
@@ -489,7 +489,7 @@ module JSON
         num = @json[start...@index]
         has_invalid_leading_zero = num.match?(/^0\d/)
 
-        @output += has_invalid_leading_zero ? "\"#{num}\"" : num
+        @output << (has_invalid_leading_zero ? "\"#{num}\"" : num)
         return true
       end
 
@@ -503,7 +503,7 @@ module JSON
     # Parse an array like '["item1", "item2", ...]'
     def parse_array
       if @json[@index] == OPENING_BRACKET
-        @output += '['
+        @output << '['
         @index += 1
         parse_whitespace_and_skip_comments
 
@@ -531,7 +531,7 @@ module JSON
         end
 
         if @json[@index] == CLOSING_BRACKET
-          @output += ']'
+          @output << ']'
           @index += 1
         else
           # repair missing closing array bracket
@@ -580,7 +580,7 @@ module JSON
       # repair numbers cut off at the end
       # this will only be called when we end after a '.', '-', or 'e' and does not
       # change the number more than it needs to make it valid JSON
-      @output += "#{@json[start...@index]}0"
+      @output << "#{@json[start...@index]}0"
     end
 
     # Parse and repair Newline Delimited JSON (NDJSON):
