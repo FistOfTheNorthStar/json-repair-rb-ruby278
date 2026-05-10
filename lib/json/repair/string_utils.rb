@@ -149,7 +149,7 @@ module JSON
 
       def parse_keyword(name, value)
         if @json[@index, name.length] == name
-          @output += value
+          @output << value
           @index += name.length
           true
         else
