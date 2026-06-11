@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `bundle exec rspec spec/json_spec.rb:42` — run a single example by line number; nearly all behavioral specs live in `spec/json_spec.rb`.
 - `bundle exec rubocop` — lint. Project-specific exclusions in `.rubocop.yml` deliberately disable several `Metrics/*` cops for `lib/json/repairer.rb` and `lib/json/repair/string_utils.rb` because the parser is long by design — don't try to "fix" it by chopping methods up.
 - `bin/console` — IRB with the gem preloaded.
-- `bundle exec rake install` / `bundle exec rake release` — local install / publish to rubygems.org.
+- `bundle exec rake bench` — benchmark-ips regression baseline (`benchmark/run.rb`); run before/after perf-sensitive changes.
+- `bundle exec rake install` / `bundle exec rake release` — local install / publish to rubygems.org (release prompts for a rubygems MFA OTP).
 - Type checking: `Steepfile` checks `lib/` against `sig/`. `bundle exec steep check` (typecheck) and `bundle exec rbs validate` (sig syntax) both run in CI and as part of the default rake task. `steep` and `rbs` are dev dependencies in the `Gemfile`.
 
 Ruby `>= 3.0.0` is required (per gemspec). CI runs against Ruby 3.3.1.
@@ -19,9 +20,15 @@ Ruby `>= 3.0.0` is required (per gemspec). CI runs against Ruby 3.3.1.
 
 This gem is a **Ruby port of the [josdejong/jsonrepair](https://github.com/josdejong/jsonrepair) TypeScript library**. The upstream version currently mirrored is tracked in `CHANGELOG.md` (presently v3.14.0). When syncing upstream changes, the goal is parity with the JS implementation, not idiomatic refactoring — keep method names, control flow, and repair heuristics aligned with the JS source so future syncs stay tractable.
 
+A few repair heuristics deliberately go **beyond** upstream (leading-dot numbers like `.5`, Markdown list markers like `- {...}`). Each such site carries a "Divergence from upstream" comment in the code and a CHANGELOG note — keep that convention when adding more, so future upstream syncs can tell ported behavior from local extensions.
+
 ### Entry point
 
-`JSON.repair(str)` in `lib/json/repair.rb` is a thin wrapper that constructs `JSON::Repairer.new(str).repair`. `JSON::JSONRepairError` is the only error raised for unrecoverable inputs.
+`JSON.repair(str)` in `lib/json/repair.rb` first tries stdlib `JSON.parse` (fast path; opt out with `skip_json_loads: true`), and falls back to `JSON::Repairer.new(str).repair` when that raises. Either way the result is re-serialized with `JSON.generate`, so **output is canonical** — whitespace collapsed, numbers normalized, duplicate keys last-write-wins — and both paths agree on it. A `REPAIR_REQUIRED_PATTERN` regex routes inputs containing comments or invalid escapes straight to the Repairer even though the bundled `json` gem would accept them. `return_objects: true` returns the parsed Ruby value instead of a string; `JSON.repair_file(path)` / `JSON.repair_io(io)` are convenience wrappers forwarding both options.
+
+`JSON::JSONRepairError` is the only error raised for unrecoverable inputs; it exposes the failure `#position`. If the Repairer ever emits a string stdlib cannot parse (a Repairer bug), the `JSON::ParserError` is wrapped in `JSONRepairError` rather than leaked.
+
+`exe/json-repair` is a CLI wrapper (`lib/json/repair/cli.rb`) reading stdin or a file, writing stdout, `--output FILE`, or `--overwrite`.
 
 ### The parser (`lib/json/repairer.rb`)
 
@@ -43,7 +50,7 @@ Two patterns recur and are worth knowing before editing:
 - **Backtracking via snapshots.** Methods like `parse_string` capture `i_before = @index` and `o_before = @output.length` before tentatively consuming input. If a later check (e.g. "the end quote turned out not to be a real end quote") fails, they restore both and re-invoke themselves with different flags (e.g. `stop_at_delimiter: true`, `stop_at_index: …`). Preserve this pattern when modifying string/number parsing.
 - **Repair-by-rewriting-tail.** Helpers like `insert_before_last_whitespace(@output, ',')` and `@output = strip_last_occurrence(@output, ',')` patch the already-emitted output to fix things like missing or trailing commas. These run *after* the malformed input has been partially emitted — they are the mechanism for "I now realize that earlier token needed a comma after it."
 
-`repair` (the public method) drives `parse_value` then handles top-level concerns: stripping Markdown fences (` ```json ... ``` `), converting newline-delimited JSON at the root into an array, dropping redundant trailing braces/brackets, and rejecting any non-whitespace trailing garbage.
+`repair` (the public method) drives `parse_value` then handles top-level concerns: stripping Markdown fences (` ```json ... ``` `), skipping Markdown list markers like `- ` / `* ` / `1. ` before the root value and each newline-delimited line (`markdown_list_marker_length` / `skip_markdown_list_marker` — top-level only, never inside nested structures), converting newline-delimited JSON at the root into an array, dropping redundant trailing braces/brackets, and rejecting any non-whitespace trailing garbage.
 
 ### Shared helpers (`lib/json/repair/string_utils.rb`)
 
@@ -62,6 +69,13 @@ RBS signatures mirror the public surface of `JSON.repair`, `JSON::Repairer`, and
 
 ### Test layout
 
-- `spec/json_spec.rb` — the substantive behavioral suite (700+ examples covering every repair heuristic). New behavior — and every sync from upstream — belongs here.
+- `spec/json_spec.rb` — the substantive behavioral suite (130+ examples, hundreds of assertions, covering every repair heuristic). New behavior — and every sync from upstream — belongs here.
+- `spec/json/repair/cli_spec.rb` — the `exe/json-repair` CLI (argument handling, IO errors, exit codes).
+- `spec/json/repair/string_utils_spec.rb` — direct unit coverage for a few `StringUtils` edge cases the behavioral suite can't reach.
 - `spec/json/repair_spec.rb` — sanity check on `JSON::Repair::VERSION` only.
-- `.rspec_status` is committed and tracks per-example pass/fail so `--only-failures` / `--next-failure` work across runs.
+- SimpleCov enforces 100% line and branch coverage on the full run, so a filtered `rspec -e ...` run "fails" at the coverage gate even when all selected examples pass — ignore that exit code during TDD.
+- `.rspec_status` is gitignored (local pass/fail tracking for `--only-failures` / `--next-failure`).
+
+## Local planning notes
+
+`docs/` (the `TODO.md` backlog plus design specs and implementation plans under `docs/superpowers/`) is gitignored local planning material — read it for context, update it as work completes, but never commit anything under `docs/`.
