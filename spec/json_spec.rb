@@ -691,6 +691,77 @@ RSpec.describe JSON do
       it 'repairs an object with an unquoted key and unclosed array value' do
         expect(JSON.repair('{foo: [}')).to eq('{"foo":[]}')
       end
+
+      it 'repairs a value behind a Markdown list marker' do
+        expect(JSON.repair('- { "k": 1 }')).to eq('{"k":1}')
+        expect(JSON.repair('- [1, 2]')).to eq('[1,2]')
+        expect(JSON.repair('- "text"')).to eq('"text"')
+        expect(JSON.repair('- 5')).to eq('5')
+        expect(JSON.repair('- true')).to eq('true')
+        expect(JSON.repair('- -5')).to eq('-5')
+        expect(JSON.repair('- item one')).to eq('"item one"')
+        expect(JSON.repair('- .5')).to eq('0.5')
+        # NBSP after the marker counts as same-line whitespace
+        expect(JSON.repair("-\u00A0{\"a\": 1}")).to eq('{"a":1}')
+      end
+
+      it 'repairs a Markdown list marker after a leading comment' do
+        expect(JSON.repair("/* c */\n- {\"a\": 1}")).to eq('{"a":1}')
+        expect(JSON.repair("// note\n- 1\n- 2")).to eq('[1,2]')
+      end
+
+      it 'repairs a value behind an asterisk or plus Markdown list marker' do
+        expect(JSON.repair('* {"a": 1}')).to eq('{"a":1}')
+        expect(JSON.repair('* 5')).to eq('5')
+        expect(JSON.repair('* item')).to eq('"item"')
+        expect(JSON.repair('+ {"a": 1}')).to eq('{"a":1}')
+      end
+
+      it 'repairs a value behind an ordered Markdown list marker' do
+        expect(JSON.repair('1. {"a": 1}')).to eq('{"a":1}')
+        expect(JSON.repair('2) {"a": 1}')).to eq('{"a":1}')
+        expect(JSON.repair('12. {"a": 1}')).to eq('{"a":1}')
+        expect(JSON.repair('123456789. 5')).to eq('5')
+      end
+
+      it 'repairs a Markdown list marker inside a fenced code block' do
+        expect(JSON.repair("```json\n- {\"a\": 1}\n```")).to eq('{"a":1}')
+      end
+
+      it 'does not mistake numbers or truncated input for Markdown list markers' do
+        expect(JSON.repair('-5')).to eq('-5')
+        expect(JSON.repair('- ')).to eq('0')
+        expect(JSON.repair('* ')).to eq('"*"')
+        expect { JSON.repair('+ ') }.to raise_error(JSON::JSONRepairError)
+        expect(JSON.repair('1.')).to eq('1.0')
+        expect(JSON.repair("-\n{\"a\": 1}")).to eq('[0,{"a":1}]')
+        expect(JSON.repair('[- 1, 2]')).to eq('[0,1,2]')
+        expect { JSON.repair('1234567890. 5') }.to raise_error(JSON::JSONRepairError)
+        expect { JSON.repair('- - 5') }.to raise_error(JSON::JSONRepairError)
+      end
+
+      it 'repairs a multi-line Markdown list into an array' do
+        expect(JSON.repair("- {\"a\": 1}\n- {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("* {\"a\": 1}\n* {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("1. {\"a\": 1}\n2. {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("- item one\n- item two")).to eq('["item one","item two"]')
+        expect(JSON.repair("1. first\n2. second")).to eq('["first","second"]')
+        expect(JSON.repair("- {\"a\": 1},\n- {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("1) {\"a\": 1}\n2) {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("+ 1\n+ 2")).to eq('[1,2]')
+        expect(JSON.repair("- .5\n- .25")).to eq('[0.5,0.25]')
+      end
+
+      it 'repairs newline delimited JSON with Markdown list markers on some lines' do
+        expect(JSON.repair("{\"a\": 1}\n* {\"b\": 2}")).to eq('[{"a":1},{"b":2}]')
+        expect(JSON.repair("3\n- 5\n7")).to eq('[3,5,7]')
+        expect(JSON.repair("1\n- 2,\n- 3")).to eq('[1,2,3]')
+      end
+
+      it 'keeps newline delimited decimals and concatenated strings intact' do
+        expect(JSON.repair("1.5\n2.5")).to eq('[1.5,2.5]')
+        expect(JSON.repair("\"a\"\n+ \"b\"")).to eq('"ab"')
+      end
     end
 
     context 'when the JSON cannot be repaired' do

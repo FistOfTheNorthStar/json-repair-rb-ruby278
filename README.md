@@ -31,6 +31,12 @@ puts repaired_json  # Outputs: {"name":"Alice","age":25}
 
 The `repair` method takes a string containing JSON data and returns a corrected version of this string, ensuring it is valid JSON.
 
+Markdown markup in LLM output is handled too: fenced code blocks like `` ```json `` are stripped, and list markers (`-`, `*`, `+`, `1.`) in front of top-level values are removed — a multi-line list becomes an array:
+
+```ruby
+JSON.repair("- {\"a\": 1}\n- {\"b\": 2}")  # => '[{"a":1},{"b":2}]'
+```
+
 Pass `return_objects: true` to get the parsed Ruby value (Hash, Array, or scalar) instead of a string:
 
 ```ruby

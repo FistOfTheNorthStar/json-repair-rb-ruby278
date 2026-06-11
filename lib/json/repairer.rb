@@ -37,6 +37,12 @@ module JSON
     def repair
       parse_markdown_code_block(MARKDOWN_OPEN_BLOCKS)
 
+      # repair: skip a Markdown list marker before the root value
+      # (and any comments before it, which parse_value would otherwise
+      # only consume after the marker check has already failed)
+      parse_whitespace_and_skip_comments
+      skip_markdown_list_marker
+
       processed = parse_value
 
       throw_unexpected_end unless processed
@@ -46,7 +52,8 @@ module JSON
       processed_comma = parse_character(COMMA)
       parse_whitespace_and_skip_comments if processed_comma
 
-      if start_of_value?(@json[@index]) && ends_with_comma_or_newline?(@output)
+      if (start_of_value?(@json[@index]) || markdown_list_marker_length) &&
+         ends_with_comma_or_newline?(@output)
         # start of a new value after end of the root level object: looks like
         # newline delimited JSON -> turn into a root level array
         unless processed_comma
@@ -168,6 +175,52 @@ module JSON
       end
 
       false
+    end
+
+    # Look ahead from @index for a Markdown list marker like "- ", "* ",
+    # "+ ", or "12. " that precedes a value. Returns the marker's length,
+    # or nil when there is no marker. Only consulted at the top level —
+    # the root value and each newline-delimited value — never inside
+    # nested structures. A marker must be followed by same-line
+    # whitespace and a value, so "-5", a trailing "- ", and "-\n{...}"
+    # keep their number readings. Ordered markers are capped at nine
+    # digits (the CommonMark limit) so long truncated decimals are not
+    # mistaken for markers. Divergence from upstream (no Markdown list
+    # handling as of v3.14.0): LLMs frequently emit JSON values as
+    # Markdown list items.
+    def markdown_list_marker_length
+      j = @index
+
+      if [MINUS, ASTERISK, PLUS].include?(@json[j])
+        j += 1
+      elsif digit?(@json[j])
+        j += 1 while digit?(@json[j]) && j - @index < 9
+        return nil unless [DOT, CLOSE_PARENTHESIS].include?(@json[j])
+
+        j += 1
+      else
+        return nil
+      end
+
+      marker_length = j - @index
+      return nil unless same_line_whitespace?(@json[j])
+
+      j += 1 while same_line_whitespace?(@json[j])
+      # a leading-dot number like ".5" is also a value here: parse_number
+      # repairs it to "0.5" even though start_of_value? does not match it
+      return nil unless start_of_value?(@json[j]) || @json[j] == DOT
+
+      marker_length
+    end
+
+    # Repair a value behind a Markdown list marker, like "- {"a":1}",
+    # by skipping the marker. See markdown_list_marker_length.
+    def skip_markdown_list_marker
+      length = markdown_list_marker_length
+      return false unless length
+
+      @index += length
+      true
     end
 
     # Parse an object like '{"key": "value"}'
@@ -744,6 +797,10 @@ module JSON
             @output = insert_before_last_whitespace(@output, ',')
           end
         end
+
+        # repair: skip a Markdown list marker before the next value
+        parse_whitespace_and_skip_comments
+        skip_markdown_list_marker
 
         processed_value = parse_value
       end
