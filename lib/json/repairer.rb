@@ -237,6 +237,7 @@ module JSON
 
       initial = true
       while @index < @json.length && @json[@index] != CLOSING_BRACE
+        first_pair = initial
         if initial
           initial = false
         else
@@ -255,8 +256,12 @@ module JSON
           if @json[@index] == CLOSING_BRACE || @json[@index] == OPENING_BRACE ||
              @json[@index] == CLOSING_BRACKET || @json[@index] == OPENING_BRACKET ||
              @json[@index].nil?
-            # repair trailing comma
-            @output = strip_last_occurrence(@output, ',')
+            # repair trailing comma — but only the one this object's own loop
+            # emitted or inserted; on the first pair the buffer's last
+            # comma belongs to the enclosing container, like in [{{] or
+            # {"a": 1, "b": {] (divergence from upstream, which strips
+            # the parent's comma and emits invalid JSON like [{}{}])
+            @output = strip_last_occurrence(@output, ',') unless first_pair
           else
             throw_object_key_expected
           end
@@ -738,7 +743,13 @@ module JSON
         @index += 1 while digit?(@json[@index])
       end
 
-      if @json[@index] && @json[@index].downcase == 'e'
+      # Divergence from upstream: only enter the exponent branch when a
+      # mantissa was consumed — at this point @index > start implies at
+      # least one digit (the '-' and '.' paths reset otherwise). Upstream
+      # accepts a bare "e"/"E" here and emits invalid JSON like `e0` or
+      # raw `e5`; declining lets the token fall through to
+      # parse_unquoted_string, matching how "-e5" already becomes "-e5".
+      if @index > start && @json[@index] && @json[@index].downcase == 'e'
         @index += 1
         @index += 1 if ['-', '+'].include?(@json[@index])
         if at_end_of_number?
@@ -761,7 +772,9 @@ module JSON
       if @index > start
         # repair a number with leading zeros like "00789"
         num = @json[start...@index]
-        has_invalid_leading_zero = num.match?(/^0\d/)
+        # the optional sign quotes "-05" like "05" (divergence from
+        # upstream, whose unsigned check lets "-05" through unrepaired)
+        has_invalid_leading_zero = num.match?(/^-?0\d/)
 
         @output << (has_invalid_leading_zero ? "\"#{num}\"" : repair_leading_dot_number(num))
         return true
@@ -786,6 +799,7 @@ module JSON
 
         initial = true
         while @index < @json.length && @json[@index] != CLOSING_BRACKET
+          first_item = initial
           if initial
             initial = false
           else
@@ -799,8 +813,12 @@ module JSON
           processed_value = parse_value
           next if processed_value
 
-          # repair trailing comma
-          @output = strip_last_occurrence(@output, ',')
+          # repair trailing comma — but only the one this array's own loop
+          # emitted or inserted; on the first item the buffer's last
+          # comma belongs to the enclosing container, like in [1,[}] or
+          # {"a": 1, "b": [} (divergence from upstream, which strips
+          # the parent's comma and emits invalid JSON like [1[]])
+          @output = strip_last_occurrence(@output, ',') unless first_item
           break
         end
 
@@ -859,7 +877,11 @@ module JSON
       # repair numbers cut off at the end
       # this will only be called when we end after a '.', '-', or 'e' and does not
       # change the number more than it needs to make it valid JSON
-      @output << repair_leading_dot_number("#{@json[start...@index]}0")
+      num = "#{@json[start...@index]}0"
+      # quote a padded token that has an invalid leading zero, like "05e" ->
+      # "05e0", applying the same rule as the end of parse_number (divergence
+      # from upstream, which emits the invalid number raw)
+      @output << (num.match?(/^-?0\d/) ? "\"#{num}\"" : repair_leading_dot_number(num))
     end
 
     # Repair a number missing its digit before the decimal point, like ".5"

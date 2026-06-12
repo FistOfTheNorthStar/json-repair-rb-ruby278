@@ -688,6 +688,30 @@ RSpec.describe JSON do
         expect(JSON.repair('{value:0789}')).to eq('{"value":"0789"}')
       end
 
+      it 'repairs a negative number with leading zero' do
+        expect(JSON.repair('-05')).to eq('"-05"')
+        expect(JSON.repair('-0789')).to eq('"-0789"')
+        expect(JSON.repair('[-05]')).to eq('["-05"]')
+        expect(JSON.repair('[-05e3]')).to eq('["-05e3"]')
+        expect(JSON.repair('{"n": -05}')).to eq('{"n":"-05"}')
+        # valid negative-zero numbers are untouched
+        expect(JSON.repair('[-0]')).to eq('[0]')
+        expect(JSON.repair('[-0.5]')).to eq('[-0.5]')
+      end
+
+      it 'repairs a truncated number with leading zero' do
+        expect(JSON.repair('[05e]')).to eq('["05e0"]')
+        expect(JSON.repair('00e')).to eq('"00e0"')
+        expect(JSON.repair('00.')).to eq('"00.0"')
+        expect(JSON.repair('[-05e]')).to eq('["-05e0"]')
+        expect(JSON.repair('-00.')).to eq('"-00.0"')
+        # a single leading zero stays numeric after padding
+        expect(JSON.repair('[0e]')).to eq('[0.0]')
+        expect(JSON.repair('[0.]')).to eq('[0.0]')
+        expect(JSON.repair('[-0e]')).to eq('[-0.0]')
+        expect(JSON.repair('[-0.]')).to eq('[-0.0]')
+      end
+
       it 'repairs a number starting with a dot' do
         expect(JSON.repair('.5')).to eq('0.5')
         expect(JSON.repair('-.5')).to eq('-0.5')
@@ -701,8 +725,43 @@ RSpec.describe JSON do
         expect(JSON.repair('[-., 1]')).to eq('[-0.0,1]')
       end
 
+      it 'repairs a stray e or E into an unquoted string' do
+        expect(JSON.repair('[e]')).to eq('["e"]')
+        expect(JSON.repair('[E]')).to eq('["E"]')
+        expect(JSON.repair('[e5]')).to eq('["e5"]')
+        expect(JSON.repair('[E5]')).to eq('["E5"]')
+        expect(JSON.repair('e')).to eq('"e"')
+        expect(JSON.repair('[e, 1]')).to eq('["e",1]')
+        expect(JSON.repair('[e-]')).to eq('["e-"]')
+        expect(JSON.repair('{"k": e}')).to eq('{"k":"e"}')
+        expect(JSON.repair('[truee]')).to eq('[true,"e"]')
+        expect(JSON.repair('["z"e]')).to eq('["z","e"]')
+        # the concatenation path declines after the stray e, like [a+]
+        expect { JSON.repair('[e+]') }.to \
+          raise_error(JSON::JSONRepairError, 'Unexpected character "+" at index 2')
+        # a real mantissa + e + non-digit/non-end also falls through to unquoted string
+        expect(JSON.repair('[2ex]')).to eq('["2ex"]')
+      end
+
       it 'repairs an object with an unquoted key and unclosed array value' do
         expect(JSON.repair('{foo: [}')).to eq('{"foo":[]}')
+      end
+
+      it 'repairs a truncated nested container without dropping the enclosing comma' do
+        expect(JSON.repair('[{{]')).to eq('[{},{}]')
+        expect(JSON.repair('["x",{{]')).to eq('["x",{},{}]')
+        expect(JSON.repair('[{"a":1,{]')).to eq('[{"a":1},{}]')
+        expect(JSON.repair('[1,[}]')).to eq('[1,[]]')
+        expect(JSON.repair('[1,[}')).to eq('[1,[]]')
+        expect(JSON.repair('{"a": 1, "b": [}')).to eq('{"a":1,"b":[]}')
+        expect(JSON.repair('{"a": 1, "b": {]')).to eq('{"a":1,"b":{}}')
+        # doubled braces at the root still raise (no enclosing comma to lose)
+        expect { JSON.repair('{{') }.to \
+          raise_error(JSON::JSONRepairError, 'Unexpected character "{" at index 1')
+        expect { JSON.repair('{{}}') }.to \
+          raise_error(JSON::JSONRepairError, 'Unexpected character "{" at index 1')
+        expect { JSON.repair('{"a":{{') }.to \
+          raise_error(JSON::JSONRepairError, 'Unexpected character "{" at index 6')
       end
 
       it 'repairs a value behind a Markdown list marker' do
