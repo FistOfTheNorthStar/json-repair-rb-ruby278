@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `bundle exec rake install` / `bundle exec rake release` — local install / publish to rubygems.org (release prompts for a rubygems MFA OTP).
 - Type checking: `Steepfile` checks `lib/` against `sig/`. `bundle exec steep check` (typecheck) and `bundle exec rbs validate` (sig syntax) both run in CI and as part of the default rake task. `steep` and `rbs` are dev dependencies in the `Gemfile`.
 
-Ruby `>= 3.0.0` is required (per gemspec). CI runs against Ruby 3.3.1.
+Ruby `>= 3.0.0` is required (per gemspec). CI runs against all currently maintained Ruby branches (3.3, 3.4, 4.0).
 
 ## Architecture
 

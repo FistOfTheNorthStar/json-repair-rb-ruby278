@@ -68,7 +68,7 @@ module JSON
       end
 
       # repair redundant end quotes
-      while @json[@index] == CLOSING_BRACE || @json[@index] == CLOSING_BRACKET
+      while [CLOSING_BRACE, CLOSING_BRACKET].include?(@json[@index])
         @index += 1
         parse_whitespace_and_skip_comments
       end
@@ -236,7 +236,6 @@ module JSON
 
       initial = true
       while @index < @json.length && @json[@index] != CLOSING_BRACE
-        processed_comma = true
         if initial
           initial = false
         else
