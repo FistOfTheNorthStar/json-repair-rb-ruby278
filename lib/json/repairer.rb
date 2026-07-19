@@ -581,7 +581,9 @@ module JSON
           @index = i_quote + 1
 
           # repair unescaped quote
-          str = "#{str[...o_quote]}\\#{str[o_quote..]}"
+          # +"" keeps the result mutable on Ruby 2.7, where the
+          # frozen_string_literal pragma freezes interpolated literals too
+          str = +"#{str[...o_quote]}\\#{str[o_quote..]}"
           @repaired_unescaped_quote = true
         elsif stop_at_delimiter && unquoted_string_delimiter?(@json[@index])
           # we're in the mode to stop the string at the first delimiter
