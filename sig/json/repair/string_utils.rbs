@@ -1,0 +1,173 @@
+module JSON
+  module Repair
+    module StringUtils
+      @output: ::String
+
+      @index: ::Integer
+
+      # Constants for character chars
+      BACKSLASH: "\\"
+
+      SLASH: "/"
+
+      ASTERISK: "*"
+
+      OPENING_BRACE: "{"
+
+      CLOSING_BRACE: "}"
+
+      OPENING_BRACKET: "["
+
+      CLOSING_BRACKET: "]"
+
+      OPEN_PARENTHESIS: "("
+
+      CLOSE_PARENTHESIS: ")"
+
+      SPACE: ::String
+
+      NEWLINE: ::String
+
+      TAB: ::String
+
+      RETURN: ::String
+
+      BACKSPACE: ::String
+
+      FORM_FEED: ::String
+
+      DOUBLE_QUOTE: "\""
+
+      PLUS: "+"
+
+      MINUS: "-"
+
+      QUOTE: "'"
+
+      ZERO: "0"
+
+      NINE: "9"
+
+      COMMA: ","
+
+      DOT: "."
+
+      COLON: ":"
+
+      SEMICOLON: ";"
+
+      UPPERCASE_A: "A"
+
+      LOWERCASE_A: "a"
+
+      UPPERCASE_E: "E"
+
+      LOWERCASE_E: "e"
+
+      UPPERCASE_F: "F"
+
+      LOWERCASE_F: "f"
+
+      NON_BREAKING_SPACE: ::String
+
+      MONGOLIAN_VOWEL_SEPARATOR: ::String
+
+      EN_QUAD: ::String
+
+      ZERO_WIDTH_SPACE: ::String
+
+      NARROW_NO_BREAK_SPACE: ::String
+
+      MEDIUM_MATHEMATICAL_SPACE: ::String
+
+      IDEOGRAPHIC_SPACE: ::String
+
+      ZERO_WIDTH_NO_BREAK_SPACE: ::String
+
+      DOUBLE_QUOTE_LEFT: ::String
+
+      DOUBLE_QUOTE_RIGHT: ::String
+
+      QUOTE_LEFT: ::String
+
+      QUOTE_RIGHT: ::String
+
+      GRAVE_ACCENT: "`"
+
+      ACUTE_ACCENT: ::String
+
+      REGEX_DELIMITER: ::Regexp
+
+      REGEX_UNQUOTED_STRING_DELIMITER: ::Regexp
+
+      REGEX_START_OF_VALUE: ::Regexp
+
+      REGEX_URL_START: ::Regexp
+
+      REGEX_URL_CHAR: ::Regexp
+
+      REGEX_FUNCTION_NAME_CHAR_START: ::Regexp
+
+      REGEX_FUNCTION_NAME_CHAR: ::Regexp
+
+      # Functions to check character chars.
+      # `char` is `::String?` because every caller passes `@json[@index]`,
+      # which is `nil` past the end of input. The predicates either guard
+      # against `nil` explicitly or rely on `Array#include?` / `==` /
+      # `Regexp#match?` returning a safe value for `nil`.
+      def hex?: (::String? char) -> bool
+
+      def digit?: (::String? char) -> bool
+
+      def valid_string_character?: (::String char) -> bool
+
+      def delimiter?: (::String? char) -> bool
+
+      def unquoted_string_delimiter?: (::String? char) -> bool
+
+      def function_name_char_start?: (::String? char) -> bool
+
+      def function_name_char?: (::String? char) -> bool
+
+      def start_of_value?: (::String? char) -> bool
+
+      def control_character?: (::String? char) -> bool
+
+      def whitespace?: (::String? char) -> bool
+
+      def whitespace_except_newline?: (::String? char) -> bool
+
+      def special_whitespace?: (::String? char) -> bool
+
+      def same_line_whitespace?: (::String? char) -> bool
+
+      def whitespace_or_special?: (::String? char) -> bool
+
+      def quote?: (::String? char) -> bool
+
+      def double_quote?: (::String? char) -> bool
+
+      def single_quote?: (::String? char) -> bool
+
+      def double_quote_like?: (::String? char) -> bool
+
+      def single_quote_like?: (::String? char) -> bool
+
+      # Strip last occurrence of text_to_strip from text
+      def strip_last_occurrence: (::String text, ::String text_to_strip, ?strip_remaining_text: bool) -> ::String
+
+      def insert_before_last_whitespace: (::String text, ::String text_to_insert) -> ::String
+
+      # Parse keywords true, false, null
+      # Repair Python keywords True, False, None
+      # Repair Ruby keyword nil
+      def parse_keywords: () -> bool
+
+      def parse_keyword: (::String name, ::String value) -> bool
+
+      def remove_at_index: (::String text, ::Integer start, ::Integer count) -> ::String
+
+      def ends_with_comma_or_newline?: (::String text) -> bool
+    end
+  end
+end

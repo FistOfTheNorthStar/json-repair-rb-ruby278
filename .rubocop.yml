@@ -1,9 +1,15 @@
+# Merge our Exclude lists with RuboCop's defaults (vendor/**/*, tmp/**/*, …)
+# instead of replacing them — CI vendors gems into vendor/bundle, which
+# RuboCop must keep skipping.
+inherit_mode:
+  merge:
+    - Exclude
+
 AllCops:
   TargetRubyVersion: 2.7
-
-Metrics/BlockLength:
   Exclude:
-    - spec/**/*
+    # gitignored local planning notes and scratch tooling (see CLAUDE.md)
+    - docs/**/*
 
 Style/Documentation:
   Enabled: false
@@ -19,6 +25,7 @@ Metrics/AbcSize:
 Metrics/MethodLength:
   Exclude:
     - lib/json/repairer.rb
+    - benchmark/**/*
 
 Metrics/CyclomaticComplexity:
   Exclude:
@@ -32,6 +39,8 @@ Metrics/BlockLength:
   Exclude:
     - lib/json/repairer.rb
     - spec/**/*
+    # restore RuboCop's default exclusion, lost when Exclude is overridden
+    - '*.gemspec'
 
 Metrics/BlockNesting:
   Exclude:

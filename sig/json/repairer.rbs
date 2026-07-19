@@ -1,0 +1,138 @@
+module JSON
+  class Repairer
+    # `untyped` (not `::String`) because the parser idiomatically uses
+    # `@json[@index]` past EOF, relying on Ruby returning `nil` as a
+    # sentinel. Declaring `@json: ::String` makes steep infer `String?`
+    # from `String#[]` and rejects ~15 downstream call sites that pass
+    # the result to methods expecting `String`. Tightening would either
+    # require pervasive nil-extraction at every indexing site or a
+    # private accessor — both of which break parity with the upstream
+    # JS source (see CLAUDE.md and `.rubocop.yml` exceptions for
+    # `lib/json/repairer.rb`).
+    @json: untyped
+
+    @index: ::Integer
+
+    @output: ::String
+
+    @repaired_unescaped_quote: bool
+
+    include Repair::StringUtils
+
+    CONTROL_CHARACTERS: ::Hash[::String, "\\b" | "\\f" | "\\n" | "\\r" | "\\t"]
+
+    ESCAPE_CHARACTERS: ::Hash[::String, "\"" | "\\" | "/" | "\b" | "\f" | "\n" | "\r" | "\t"]
+
+    MARKDOWN_OPEN_BLOCKS: ::Array[::String]
+
+    MARKDOWN_CLOSE_BLOCKS: ::Array[::String]
+
+    def initialize: (::String json) -> void
+
+    def repair: () -> ::String
+
+    private
+
+    def parse_value: () -> bool
+
+    def parse_whitespace: (?skip_newline: bool) -> bool
+
+    def parse_comment: (?value_expected: bool) -> bool
+
+    def hash_comment?: (bool value_expected) -> bool
+
+    # Find and skip over a Markdown fenced code block
+    def parse_markdown_code_block: (::Array[::String] blocks) -> bool
+
+    def skip_markdown_code_block: (::Array[::String] blocks) -> bool
+
+    # Look ahead for a Markdown list marker like "- " or "12. " that
+    # precedes a value; returns the marker's length, or nil when there
+    # is no marker.
+    def markdown_list_marker_length: () -> ::Integer?
+
+    def skip_markdown_list_marker: () -> bool
+
+    # Parse an object like '{"key": "value"}'
+    def parse_object: () -> bool
+
+    # Repair an object value with unescaped quotes around a colon,
+    # like {"a": "b": "c"}, by merging it into one string value.
+    def repair_doubled_colon: () -> void
+
+    def skip_character: (::String char) -> bool
+
+    # Skip ellipsis like "[1,2,3,...]" or "[1,2,3,...,9]" or "[...,7,8,9]"
+    # or a similar construct in objects.
+    def skip_ellipsis: () -> void
+
+    # Drop elided empty array slots like [1,,2] -> [1,2].
+    def skip_elided_commas: () -> void
+
+    # Parse a string enclosed by double quotes "...". Can contain escaped quotes
+    # Repair strings enclosed in single quotes or special quotes
+    # Repair an escaped string
+    #
+    # The function can run in two stages:
+    # - First, it assumes the string has a valid end quote
+    # - If it turns out that the string does not have a valid end quote followed
+    #   by a delimiter (which should be the case), the function runs again in a
+    #   more conservative way, stopping the string at the first next delimiter
+    #   and fixing the string by inserting a quote there, or stopping at a
+    #   stop index detected in the first iteration.
+    def parse_string: (?stop_at_delimiter: bool, ?stop_at_index: ::Integer) -> bool
+
+    # Repair an unquoted string by adding quotes around it
+    # Repair a MongoDB function call like NumberLong("2")
+    # Repair a JSONP function call like callback({...});
+    def parse_unquoted_string: (bool is_key) -> bool
+
+    # Parse a regular expression literal like /foo/ or /foo\/bar/
+    def parse_regex: () -> bool
+
+    def parse_character: (::String char) -> bool
+
+    def parse_whitespace_and_skip_comments: (?skip_newline: bool, ?value_expected: bool) -> bool
+
+    # Parse a number like 2.4 or 2.4e6
+    def parse_number: () -> bool
+
+    def at_end_of_number?: () -> bool
+
+    # Parse an array like '["item1", "item2", ...]'
+    def parse_array: () -> bool
+
+    def prev_non_whitespace_index: (::Integer start) -> ::Integer
+
+    # Repair concatenated strings like "hello" + "world", change this into "helloworld"
+    def parse_concatenated_string: () -> bool
+
+    def repair_number_ending_with_numeric_symbol: (::Integer start) -> void
+
+    # Repair a number missing its digit before the decimal point, like ".5"
+    # or "-.5", into "0.5" / "-0.5".
+    def repair_leading_dot_number: (::String num) -> ::String
+
+    # Parse and repair Newline Delimited JSON (NDJSON):
+    # multiple JSON objects separated by a newline character
+    def parse_newline_delimited_json: () -> void
+
+    def skip_escape_character: () -> bool
+
+    # `bot` (bottom) because these always raise — steep needs this to
+    # treat their call sites as unreachable so methods like `repair`
+    # type-check (the trailing `throw_unexpected_character` must not
+    # contribute `void` to the method's union return type).
+    def throw_invalid_character: (::String char) -> bot
+
+    def throw_unexpected_character: () -> bot
+
+    def throw_unexpected_end: () -> bot
+
+    def throw_object_key_expected: () -> bot
+
+    def throw_colon_expected: () -> bot
+
+    def throw_invalid_unicode_character: () -> bot
+  end
+end

@@ -35,31 +35,39 @@ module JSON
       LOWERCASE_E = 'e' # 0x65
       UPPERCASE_F = 'F' # 0x46
       LOWERCASE_F = 'f' # 0x66
-      NON_BREAKING_SPACE = "\u00a0" # 0xa0
-      EN_QUAD = "\u2000" # 0x2000
-      HAIR_SPACE = "\u200a" # 0x200a
-      NARROW_NO_BREAK_SPACE = "\u202f" # 0x202f
-      MEDIUM_MATHEMATICAL_SPACE = "\u205f" # 0x205f
-      IDEOGRAPHIC_SPACE = "\u3000" # 0x3000
-      DOUBLE_QUOTE_LEFT = "\u201c" # 0x201c
-      DOUBLE_QUOTE_RIGHT = "\u201d" # 0x201d
-      QUOTE_LEFT = "\u2018" # 0x2018
-      QUOTE_RIGHT = "\u2019" # 0x2019
+      NON_BREAKING_SPACE = ' ' # 0xa0
+      MONGOLIAN_VOWEL_SEPARATOR = '᠎' # 0x180e
+      EN_QUAD = ' ' # 0x2000
+      ZERO_WIDTH_SPACE = '​' # 0x200b
+      NARROW_NO_BREAK_SPACE = ' ' # 0x202f
+      MEDIUM_MATHEMATICAL_SPACE = ' ' # 0x205f
+      IDEOGRAPHIC_SPACE = '　' # 0x3000
+      ZERO_WIDTH_NO_BREAK_SPACE = '﻿' # 0xfeff
+      DOUBLE_QUOTE_LEFT = '“' # 0x201c
+      DOUBLE_QUOTE_RIGHT = '”' # 0x201d
+      QUOTE_LEFT = '‘' # 0x2018
+      QUOTE_RIGHT = '’' # 0x2019
       GRAVE_ACCENT = '`' # 0x0060
-      ACUTE_ACCENT = "\u00b4" # 0x00b4
+      ACUTE_ACCENT = '´' # 0x00b4
 
       REGEX_DELIMITER = %r{^[,:\[\]/{}()\n+]+$}.freeze
+      REGEX_UNQUOTED_STRING_DELIMITER = %r{^[,\[\]/{}\n+]+$}.freeze
       REGEX_START_OF_VALUE = /^[\[{\w-]$/.freeze
+      # matches "https://" and other schemas
+      REGEX_URL_START = %r{^(http|https|ftp|mailto|file|data|irc)://$}.freeze
+      # matches all valid URL characters EXCEPT "[", "]", and "," (important JSON delimiters)
+      REGEX_URL_CHAR = %r{^[A-Za-z0-9\-._~:/?#@!$&'()*+;=]$}.freeze
 
       # Functions to check character chars
       def hex?(char)
-        (char >= ZERO && char <= NINE) ||
-          (char >= UPPERCASE_A && char <= UPPERCASE_F) ||
-          (char >= LOWERCASE_A && char <= LOWERCASE_F)
+        !char.nil? &&
+          ((char >= ZERO && char <= NINE) ||
+           (char >= UPPERCASE_A && char <= UPPERCASE_F) ||
+           (char >= LOWERCASE_A && char <= LOWERCASE_F))
       end
 
       def digit?(char)
-        char && char >= ZERO && char <= NINE
+        !char.nil? && char >= ZERO && char <= NINE
       end
 
       def valid_string_character?(char)
@@ -67,30 +75,60 @@ module JSON
       end
 
       def delimiter?(char)
-        REGEX_DELIMITER.match?(char)
+        !char.nil? && REGEX_DELIMITER.match?(char)
       end
 
-      def delimiter_except_slash?(char)
-        delimiter?(char) && char != SLASH
+      def unquoted_string_delimiter?(char)
+        !char.nil? && REGEX_UNQUOTED_STRING_DELIMITER.match?(char)
+      end
+
+      REGEX_FUNCTION_NAME_CHAR_START = /\A[a-zA-Z_$]\z/.freeze
+      REGEX_FUNCTION_NAME_CHAR = /\A[a-zA-Z0-9_$]\z/.freeze
+
+      def function_name_char_start?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR_START.match?(char)
+      end
+
+      def function_name_char?(char)
+        !char.nil? && REGEX_FUNCTION_NAME_CHAR.match?(char)
       end
 
       def start_of_value?(char)
-        REGEX_START_OF_VALUE.match?(char) || (char && quote?(char))
+        !char.nil? && (REGEX_START_OF_VALUE.match?(char) || quote?(char))
       end
 
       def control_character?(char)
-        [NEWLINE, RETURN, TAB, BACKSPACE, FORM_FEED].include?(char)
+        !char.nil? && [NEWLINE, RETURN, TAB, BACKSPACE, FORM_FEED].include?(char)
       end
 
       def whitespace?(char)
-        [SPACE, NEWLINE, TAB, RETURN].include?(char)
+        !char.nil? && [SPACE, NEWLINE, TAB, RETURN].include?(char)
+      end
+
+      def whitespace_except_newline?(char)
+        !char.nil? && [SPACE, TAB, RETURN].include?(char)
       end
 
       def special_whitespace?(char)
+        return false unless char
+
         [
-          NON_BREAKING_SPACE, NARROW_NO_BREAK_SPACE, MEDIUM_MATHEMATICAL_SPACE, IDEOGRAPHIC_SPACE
+          NON_BREAKING_SPACE,
+          MONGOLIAN_VOWEL_SEPARATOR,
+          NARROW_NO_BREAK_SPACE,
+          MEDIUM_MATHEMATICAL_SPACE,
+          IDEOGRAPHIC_SPACE,
+          ZERO_WIDTH_NO_BREAK_SPACE
         ].include?(char) ||
-          (char >= EN_QUAD && char <= HAIR_SPACE)
+          (char >= EN_QUAD && char <= ZERO_WIDTH_SPACE)
+      end
+
+      def same_line_whitespace?(char)
+        whitespace_except_newline?(char) || special_whitespace?(char)
+      end
+
+      def whitespace_or_special?(char)
+        whitespace?(char) || special_whitespace?(char)
       end
 
       def quote?(char)
@@ -106,20 +144,25 @@ module JSON
       end
 
       def double_quote_like?(char)
-        [DOUBLE_QUOTE, DOUBLE_QUOTE_LEFT, DOUBLE_QUOTE_RIGHT].include?(char)
+        !char.nil? && [DOUBLE_QUOTE, DOUBLE_QUOTE_LEFT, DOUBLE_QUOTE_RIGHT].include?(char)
       end
 
       def single_quote_like?(char)
-        [QUOTE, QUOTE_LEFT, QUOTE_RIGHT, GRAVE_ACCENT, ACUTE_ACCENT].include?(char)
+        !char.nil? && [QUOTE, QUOTE_LEFT, QUOTE_RIGHT, GRAVE_ACCENT, ACUTE_ACCENT].include?(char)
       end
 
-      # Strip last occurrence of text_to_strip from text
+      # Strip last occurrence of text_to_strip from text.
+      #
+      # `|| ''` on the slices below (and in `insert_before_last_whitespace` /
+      # `remove_at_index`) is for steep's nil-narrowing: `String#[range]` is
+      # typed `String?`, but every call site here keeps indices within
+      # `0..text.length`, so the slices never actually return `nil`.
       def strip_last_occurrence(text, text_to_strip, strip_remaining_text: false)
         index = text.rindex(text_to_strip)
         return text unless index
 
-        remaining_text = strip_remaining_text ? '' : text[index + 1..]
-        text[0...index] + remaining_text
+        remaining_text = strip_remaining_text ? '' : (text[index + 1..] || '')
+        (text[0...index] || '') + remaining_text
       end
 
       def insert_before_last_whitespace(text, text_to_insert)
@@ -129,7 +172,7 @@ module JSON
 
         index -= 1 while whitespace?(text[index - 1])
 
-        text[0...index] + text_to_insert + text[index..]
+        (text[0...index] || '') + text_to_insert + (text[index..] || '')
       end
 
       # Parse keywords true, false, null
@@ -149,7 +192,7 @@ module JSON
 
       def parse_keyword(name, value)
         if @json[@index, name.length] == name
-          @output += value
+          @output << value
           @index += name.length
           true
         else
@@ -158,11 +201,7 @@ module JSON
       end
 
       def remove_at_index(text, start, count)
-        text[0...start] + text[start + count..]
-      end
-
-      def function_name?(text)
-        /^\w+$/.match?(text)
+        (text[0...start] || '') + (text[start + count..] || '')
       end
 
       def ends_with_comma_or_newline?(text)
