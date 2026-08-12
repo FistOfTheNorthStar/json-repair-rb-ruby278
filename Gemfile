@@ -8,7 +8,7 @@ gemspec
 group :development, :test do
   gem 'rake', '~> 13.4'
   gem 'rspec', '~> 3.0'
-  gem 'rubocop', '~> 1.88'
+  gem 'rubocop', '~> 1.89'
 
   gem 'benchmark-ips', '~> 2.13'
   gem 'simplecov', '~> 0.22', require: false
